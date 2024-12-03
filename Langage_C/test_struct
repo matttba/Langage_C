@@ -1,0 +1,206 @@
+#!/bin/bash
+# Petit script bash qui test la conformance du fichier complexe.h aux
+# exigences du sujet.
+#
+# /!\ NE PAS MODIFIER /!\
+
+logfile="checkerror.log"
+err=0
+
+check_fichier () {
+    if [ ! -f "$1" ]; then
+        echo "Je ne trouve pas le fichier $1 ! Vérifiez que vous êtes bien dans le bon répertoire..."
+        echo "Fichier $1 absent" >>$logfile
+        err=1
+        return 1
+    fi
+
+    echo "Vérification de la syntaxe pour $1 :" >>$logfile
+    echo "gcc -std=c99 -c -Wall -Wextra -pedantic -Werror -fsyntax-only -x c $1" >>$logfile 
+    gcc -std=c99 -c -Wall -Wextra -pedantic -Werror -fsyntax-only -x c "$1" >>$logfile 2>&1
+
+    if [ $? -ne 0 ]; then
+        echo "Je n'arrive pas à compiler le fichier $1... Veuillez corriger les erreurs et recommencer"
+        err=1
+    fi
+}
+
+check_garde () {
+    include="$1"
+    anchor="$2"
+    tmpfile="__tmp_${include}"
+
+    if [ -f "${tmpfile}" ]; then
+        rm "${tmpfile}"
+    fi
+
+    # Ajoute une constante statique
+    sed "/$anchor/a\
+        static const int x = 1;" ${include} > ${tmpfile}
+ 
+    read -r -d '' RESULT <<END_DOC
+#include "${tmpfile}"
+#include "${tmpfile}"
+
+void test() {}
+END_DOC
+
+    echo "" >>$logfile
+    echo "[le header ${include} est correctement gardé]" >>$logfile
+    echo "==code" >>$logfile
+    echo "$code" >>$logfile
+    echo "==endcode" >>$logfile
+    echo "$RESULT" | gcc -c -fsyntax-only -x c - >>$logfile 2>&1
+
+    rm "${tmpfile}"
+
+    if [[ ($neg -eq 0 && $? -ne 0) || ($neg -eq 1 && $? -eq 0) ]]; then
+        echo "Erreur : le header ${include} n'est pas correctement gardé !"
+        err=1
+        return 1
+    fi
+
+    return 0
+}
+
+check () {
+    name=""
+    include=""
+    code=""
+    errmsg=""
+    neg=0
+
+    if [[ $1 == "-n" ]]; then
+        name="$2"
+        include="$3"
+        code="$4"
+        errmsg="$5"
+        neg=1
+    else
+        name="$1"
+        include="$2"
+        code="$3"
+        errmsg="$4"
+    fi
+
+    read -r -d '' RESULT <<END_DOC
+#include "${include}"
+
+void test() {
+${code}
+}
+END_DOC
+
+    echo "" >>$logfile
+    echo "[${name}]" >>$logfile
+    echo "==code" >>$logfile
+    echo "$code" >>$logfile
+    echo "==endcode" >>$logfile
+    echo "$RESULT" | gcc -c -Wall -Wextra -pedantic -Werror -fsyntax-only -x c - >>$logfile 2>&1
+
+    if [[ ($neg -eq 0 && $? -ne 0) || ($neg -eq 1 && $? -eq 0) ]]; then
+        echo "Erreur : ${errmsg}"
+        err=1
+        return 1
+    fi
+
+    return 0
+}
+
+if [ -f $logfile ]; then
+    rm $logfile
+fi
+
+check_fichier "complexe.h"
+check_fichier "complexe.c"
+check_fichier "mandelbrot.c"
+
+if [ $err -ne 0 ]; then
+    echo "Les erreurs des fichiers testés empêchent de poursuivre le test..."
+    echo "Consultez le fichier ${logfile} pour voir les messages d'erreur obtenu"
+    exit -1
+fi
+
+gerr=0
+
+check_garde "complexe.h" "init(0.,0.);"
+ 
+check \
+    "Définition de complexe_t" \
+    "complexe.h" \
+    "complexe_t c; (void) c;" \
+    "La structure 'complexe_t' n'existe pas ou n'a pas le bon nom" \
+&& check \
+    "Définition de reelle et imaginaire" \
+    "complexe.h" \
+    "complexe_t c; double x = reelle(c); x = imaginaire(c); (void) x;" \
+    "Les fonctions 'reelle' et 'imaginaire' sont mal ou pas définies" \
+&& check \
+    "Définition de init" \
+    "complexe.h" \
+    "complexe_t c; double x = 1.0; init(&c, x, x);" \
+    "La fonction 'init' est mal ou pas définie" \
+&& check \
+    "Définition de set_reelle et set_imaginaire" \
+    "complexe.h" \
+    "complexe_t c; double x = 0.0; set_reelle(&c, x); set_imaginaire(&c, x);" \
+    "Les fonctions 'set_reelle' et 'set_imaginaire' sont mal ou pas définies" \
+&& check \
+    "Définition de copie" \
+    "complexe.h" \
+    "complexe_t c; copie(&c, c);" \
+    "La fonction 'copie' est mal ou pas définie" \
+&& check \
+    "Définition de ajouter" \
+    "complexe.h" \
+    "complexe_t c; ajouter(&c, c, c);" \
+    "La fonction 'ajouter' est mal ou pas définie" \
+&& check \
+    "Définition de soustraire" \
+    "complexe.h" \
+    "complexe_t c; soustraire(&c, c, c);" \
+    "La fonction 'soustraire' est mal ou pas définie" \
+&& check \
+    "Définition de multiplier" \
+    "complexe.h" \
+    "complexe_t c; multiplier(&c, c, c);" \
+    "La fonction 'multiplier' est mal ou pas définie" \
+&& check \
+    "Définition de echelle" \
+    "complexe.h" \
+    "complexe_t c; double x; echelle(&c, c, x);" \
+    "La fonction 'echelle' est mal ou pas définie" \
+&& check \
+    "Définition de puissance" \
+    "complexe.h" \
+    "complexe_t c; int n; puissance(&c, c, n);" \
+    "La fonction 'puissance' est mal ou pas définie" \
+&& check \
+    "Définition de module_carre" \
+    "complexe.h" \
+    "complexe_t c; double x = module_carre(c); (void) x;" \
+    "La fonction 'module_carre' est mal ou pas définie" \
+&& check \
+    "Définition de module" \
+    "complexe.h" \
+    "complexe_t c; double x = module(c); (void) x;" \
+    "La fonction 'module' est mal ou pas définie" \
+&& check \
+    "Définition de argument" \
+    "complexe.h" \
+    "complexe_t c; double x = argument(c); (void) x;" \
+    "La fonction 'argument' est mal ou pas définie"
+
+ 
+if [ $err -ne 0 ]; then
+    echo "Le fichier complexe.h n'est pas conforme"
+    gerr=1
+fi
+
+if [ $gerr -eq 0 ]; then
+    echo "Check ok."
+else
+    exit -2
+fi
+
+
